@@ -19,8 +19,8 @@ struct Node {
     leader: Option<usize>,
 }
 
-fn main() {
-    let num_nodes = 5; // Replace with desired number of nodes
+pub fn main() {
+    let num_nodes = 5;
     let nodes = create_nodes(num_nodes);
 
     let nodes_arc = Arc::new(Mutex::new(nodes));

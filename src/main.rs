@@ -8,6 +8,7 @@ use rocket::serde::{Deserialize, Serialize};
 extern crate rocket_contrib;
 
 use rocket_contrib::json::{Json, JsonValue};
+mod LeaderElection;
 
 #[derive(serde::Deserialize)]
 struct RequestBody {
