@@ -43,12 +43,13 @@ struct AppendEntriesResponse {
 }
 
 #[get("/")]
-fn startnodes() {
+fn startnodes() -> &'static str {
     //rocket::serde::json::Json<ResponseBody>
     // Dummy response
-    loop {
-        LeaderElection::RunNode();
-    }
+    let out = LeaderElection::RunNode();
+    let boxed_str = out.into_boxed_str();
+    let static_str = Box::leak(boxed_str);
+    static_str
 }
 
 // #[post("/appendEntries", format = "json", data = "<request>")]
@@ -96,4 +97,3 @@ fn rocket() -> _ {
 //             }
 //         }
 //     }
-// }

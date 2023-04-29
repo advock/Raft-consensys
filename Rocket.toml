@@ -1,7 +1,12 @@
 ## defaults for _all_ profiles
 [default]
-address = "127.0.0.1"
+address = "0.0.0.0"
 port = 8000
-keep_alive = 5
-log = "debug"
-limits = { forms = 32768 }
+workers = 16
+max_blocking = 512
+keep_alive = 1000
+ident = "Rocket"
+ip_header = "X-Real-IP" # set to `false` to disable
+log_level = "normal"
+temp_dir = "/tmp"
+cli_colors = true

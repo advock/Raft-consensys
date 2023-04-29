@@ -1,7 +1,15 @@
 use rand::Rng;
 use rocket::http::{ContentType, Header, HeaderMap};
 use rocket::serde::{Deserialize, Serialize};
+use rocket::tokio::task::JoinHandle;
+use serde::ser::Serializer;
+use serde::Deserializer;
+use serde_json;
+use serde_json::to_string;
 use std::collections::HashMap;
+use std::fmt::Debug;
+use std::fmt::Display;
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -9,26 +17,32 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 //const CONTENT_TYPE: HeaderName = HeaderName::from_static("Content-Type");
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 enum NodeState {
     Follower,
     Candidate,
     Leader,
 }
 
-#[derive(Clone)]
-struct Node {
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct Node {
     id: usize,
     state: NodeState,
+    #[serde(
+        serialize_with = "serialize_instant",
+        deserialize_with = "deserialize_instant"
+    )]
     timer: Instant,
     votes_received: usize,
     leader: Option<usize>,
     term: u32,
 }
 
-pub fn RunNode() {
+pub fn RunNode() -> String {
     let num_nodes = 5;
     let nodes = create_nodes(num_nodes);
+    println!("Total 5 nodes created ");
+    let mut val = nodes[0].clone();
 
     let nodes_arc = Arc::new(Mutex::new(nodes));
 
@@ -36,7 +50,7 @@ pub fn RunNode() {
 
     for id in 0..num_nodes {
         let nodes_arc_clone = nodes_arc.clone();
-
+        let (tx, rx): (Sender<Node>, Receiver<Node>) = channel();
         let handle = thread::spawn(move || {
             let mut rng = rand::thread_rng();
             let mut node = nodes_arc_clone.lock().unwrap()[id].clone();
@@ -45,33 +59,42 @@ pub fn RunNode() {
                 match node.state {
                     NodeState::Follower => {
                         let elapsed = node.timer.elapsed().as_millis();
-                        let start: u128 = SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap()
-                            .as_millis();
+                        // let start: u128 = SystemTime::now()
+                        //     .duration_since(UNIX_EPOCH)
+                        //     .unwrap()
+                        //     .as_millis();
+                        let start: u128 = 0;
                         let end = start + 1500;
+                        println!("{:?}", node);
                         if elapsed >= rng.gen_range(start..=end) {
+                            // println!("cgsdvjhbjhbchbdkjn");
                             node.state = NodeState::Candidate;
                             node.timer = Instant::now();
-                            node.votes_received = 1;
                             node.leader = None;
+                            node.term = node.term + 1;
                             println!("Node {} became a candidate", node.id);
-                            broadcast_request_vote(&node, &nodes_arc_clone);
+                            broadcast_request_vote(&mut node, &nodes_arc_clone);
+                            let x = &node;
+                            let txc = tx.clone();
+                            let _ = txc.send(x.clone());
                         }
                     }
                     NodeState::Candidate => {
                         let elapsed = node.timer.elapsed().as_millis();
-                        let start: u128 = SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap()
-                            .as_millis();
+                        let start: u128 = 0;
                         let end = start + 1500;
-                        if elapsed >= rng.gen_range(start..=end) {
+                        println!("{:?}", node);
+                        if elapsed >= rng.gen_range(start..=end) && node.votes_received > 3 {
                             node.timer = Instant::now();
-                            node.votes_received = 1;
+                            node.state = NodeState::Leader;
                             node.leader = None;
+                            node.term = node.term + 1;
                             println!("Node {} started a new election", node.id);
-                            broadcast_request_vote(&node, &nodes_arc_clone);
+                            println!("sdchbc");
+                            broadcast_request_vote(&mut node, &nodes_arc_clone);
+                            let x = &node;
+                            let txc = tx.clone();
+                            let _ = txc.send(x.clone());
                         }
                     }
                     NodeState::Leader => {
@@ -81,6 +104,9 @@ pub fn RunNode() {
                         for node in nodes_mutex.iter() {
                             nodes_map.insert(node.id, node.clone());
                         }
+                        let x = nodes_map.get(&id).unwrap();
+                        let txc = tx.clone();
+                        let _ = txc.send(x.clone());
 
                         // broadcast_heartbeat(&node, &nodes_map);
                         thread::sleep(Duration::from_millis(500));
@@ -97,11 +123,15 @@ pub fn RunNode() {
         });
 
         handles.push(handle);
+        val = rx.recv().unwrap();
+        println!("THE VAL IS {:?}", val);
     }
+    let json_string = serde_json::to_string(&val).unwrap();
+    return json_string;
 
-    for handle in handles {
-        handle.join().unwrap();
-    }
+    // for handle in handles {
+    //     handle.join().unwrap();
+    // }
 }
 
 fn create_nodes(num_nodes: usize) -> Vec<Node> {
@@ -121,7 +151,7 @@ fn create_nodes(num_nodes: usize) -> Vec<Node> {
     nodes
 }
 
-fn broadcast_request_vote(node: &Node, nodes_arc: &Arc<Mutex<Vec<Node>>>) {
+fn broadcast_request_vote(node: &mut Node, nodes_arc: &Arc<Mutex<Vec<Node>>>) {
     let mut nodes = nodes_arc.lock().unwrap();
 
     for i in 0..nodes.len() {
@@ -140,7 +170,7 @@ fn broadcast_request_vote(node: &Node, nodes_arc: &Arc<Mutex<Vec<Node>>>) {
             let vote_granted = rng.gen_bool(0.5);
 
             if vote_granted {
-                //node.votes_received += 1;
+                node.votes_received += 1;
                 println!(
                     "Node {} granted its vote to node {}",
                     other_node.id, node.id
@@ -238,3 +268,20 @@ fn broadcast_request_vote(node: &Node, nodes_arc: &Arc<Mutex<Vec<Node>>>) {
 //         }
 //     }
 // }
+
+fn serialize_instant<S>(time: &Instant, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let timestamp = time.elapsed().as_secs_f64();
+    serializer.serialize_f64(timestamp)
+}
+
+fn deserialize_instant<'de, D>(deserializer: D) -> Result<Instant, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let timestamp = f64::deserialize(deserializer)?;
+    let duration = Duration::from_secs_f64(timestamp);
+    Ok(Instant::now() - duration)
+}
