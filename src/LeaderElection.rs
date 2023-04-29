@@ -1,19 +1,19 @@
 use rand::Rng;
-use rocket::http::{ContentType, Header, HeaderMap};
+//use rocket::http::{ContentType, Header, HeaderMap};
 use rocket::serde::{Deserialize, Serialize};
-use rocket::tokio::task::JoinHandle;
+//use rocket::tokio::task::JoinHandle;
 use serde::ser::Serializer;
 use serde::Deserializer;
 use serde_json;
-use serde_json::to_string;
+//use serde_json::to_string;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::fmt::Display;
-use std::sync::mpsc::{channel, Receiver, Sender};
+//use std::fmt::Display;
+//use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use std::time::{SystemTime, UNIX_EPOCH};
+//use std::time::{SystemTime, UNIX_EPOCH};
 
 //const CONTENT_TYPE: HeaderName = HeaderName::from_static("Content-Type");
 
@@ -38,45 +38,44 @@ pub struct Node {
     term: u32,
 }
 
-pub fn RunNode() -> String {
+pub fn RunNode() {
     let num_nodes = 5;
+    println!("{} Nodes Created", num_nodes);
     let nodes = create_nodes(num_nodes);
-    println!("Total 5 nodes created ");
-    let mut val = nodes[0].clone();
-
     let nodes_arc = Arc::new(Mutex::new(nodes));
-
     let mut handles = Vec::new();
+    // let (tx, rx): (Sender<Node>, Receiver<Node>) = channel();
 
     for id in 0..num_nodes {
+        println!("{}", id);
         let nodes_arc_clone = nodes_arc.clone();
-        let (tx, rx): (Sender<Node>, Receiver<Node>) = channel();
+        // let (mut tx, mut rx): (Sender<Node>, Receiver<Node>) = channel();
         let handle = thread::spawn(move || {
             let mut rng = rand::thread_rng();
             let mut node = nodes_arc_clone.lock().unwrap()[id].clone();
+            println!("{}", id);
+            println!("");
 
             loop {
                 match node.state {
                     NodeState::Follower => {
                         let elapsed = node.timer.elapsed().as_millis();
-                        // let start: u128 = SystemTime::now()
-                        //     .duration_since(UNIX_EPOCH)
-                        //     .unwrap()
-                        //     .as_millis();
+
                         let start: u128 = 0;
                         let end = start + 1500;
+
                         println!("{:?}", node);
+                        println!("");
                         if elapsed >= rng.gen_range(start..=end) {
-                            // println!("cgsdvjhbjhbchbdkjn");
+                            println!("node {} has turned into cadidate", node.id);
+                            println!("");
                             node.state = NodeState::Candidate;
                             node.timer = Instant::now();
                             node.leader = None;
                             node.term = node.term + 1;
                             println!("Node {} became a candidate", node.id);
+                            println!("");
                             broadcast_request_vote(&mut node, &nodes_arc_clone);
-                            let x = &node;
-                            let txc = tx.clone();
-                            let _ = txc.send(x.clone());
                         }
                     }
                     NodeState::Candidate => {
@@ -84,29 +83,38 @@ pub fn RunNode() -> String {
                         let start: u128 = 0;
                         let end = start + 1500;
                         println!("{:?}", node);
-                        if elapsed >= rng.gen_range(start..=end) && node.votes_received > 3 {
+                        println!("");
+                        if elapsed >= rng.gen_range(start..=end) && node.votes_received >= 3 {
                             node.timer = Instant::now();
                             node.state = NodeState::Leader;
                             node.leader = None;
                             node.term = node.term + 1;
                             println!("Node {} started a new election", node.id);
-                            println!("sdchbc");
+                            println!("");
                             broadcast_request_vote(&mut node, &nodes_arc_clone);
-                            let x = &node;
-                            let txc = tx.clone();
-                            let _ = txc.send(x.clone());
+
+                            // changes to change in other nodes
+                            let mut nodes = nodes_arc_clone.lock().unwrap();
+                            for other_node in nodes.iter_mut() {
+                                if other_node.id != node.id {
+                                    other_node.state = NodeState::Candidate;
+                                    other_node.timer = Instant::now();
+                                    other_node.leader = Some(node.id);
+                                    other_node.term = node.term;
+                                }
+                            }
+                            println!("changes regarding Leader in other nodes done");
                         }
                     }
                     NodeState::Leader => {
                         println!("Node {} is the leader", node.id);
+                        println!("");
+                        let _elapsed = node.timer.elapsed().as_millis();
                         let mut nodes_map = HashMap::new();
                         let nodes_mutex = nodes_arc_clone.lock().unwrap();
                         for node in nodes_mutex.iter() {
                             nodes_map.insert(node.id, node.clone());
                         }
-                        let x = nodes_map.get(&id).unwrap();
-                        let txc = tx.clone();
-                        let _ = txc.send(x.clone());
 
                         // broadcast_heartbeat(&node, &nodes_map);
                         thread::sleep(Duration::from_millis(500));
@@ -117,24 +125,19 @@ pub fn RunNode() -> String {
                 nodes[node.id] = node.clone();
                 drop(nodes);
 
-                thread::sleep(Duration::from_millis(100));
+                thread::sleep(Duration::from_millis(1150));
                 node = nodes_arc_clone.lock().unwrap()[id].clone();
             }
         });
 
         handles.push(handle);
-        val = rx.recv().unwrap();
-        println!("THE VAL IS {:?}", val);
     }
-    let json_string = serde_json::to_string(&val).unwrap();
-    return json_string;
-
-    // for handle in handles {
-    //     handle.join().unwrap();
-    // }
+    for handle in handles {
+        handle.join().unwrap();
+    }
 }
 
-fn create_nodes(num_nodes: usize) -> Vec<Node> {
+pub fn create_nodes(num_nodes: usize) -> Vec<Node> {
     let mut nodes = Vec::new();
 
     for id in 0..num_nodes {
