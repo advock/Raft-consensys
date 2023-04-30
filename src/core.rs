@@ -52,3 +52,90 @@
 //         response
 //     }
 // }
+
+// #[derive(Serialize, Deserialize, Debug)]
+// struct HeartbeatRequestBody {
+//     leader_id: usize,
+//     term: u32,
+// }
+// #[derive(Serialize, Deserialize, Debug)]
+// struct HeartbeatResponseBody {
+//     success: bool,
+//     term: u32,
+// }
+
+// fn broadcast_heartbeat(node: &Node, nodes: &HashMap<usize, Node>) {
+//     for (_, follower_node) in nodes.iter() {
+//         if follower_node.id != node.id {
+//             let client = reqwest::blocking::Client::new();
+//             let request_body = HeartbeatRequestBody {
+//                 leader_id: node.id,
+//                 term: node.term,
+//             };
+//             let url = format!("http://{}/heartbeat", follower_node.id);
+//             let response = client
+//                 .post(url)
+//                 .header(CONTENT_TYPE,ContentType::JSON)
+//                 .json(&request_body)
+//                 .send();
+//             match response {
+//                 Ok(response) => {
+//                     let response_body = response.json::<HeartbeatResponseBody>().unwrap();
+//                     if response_body.term > node.term {
+//                         node.term = response_body.term;
+//                         //node.vote_granted = false;
+//                     }
+//                 }
+//                 Err(e) => eprintln!(
+//                     "Error sending heartbeat to node {}: {}",
+//                     follower_node.id, e
+//                 ),
+//             }
+//         }
+//     }
+// }
+
+// fn broadcast_hearetbeat(nodes_arc: Arc<Mutex<Vec<Node>>>, id: usize) {
+//     let nodes_arc_clone = nodes_arc.clone();
+//     let node = nodes_arc_clone.lock().unwrap()[id].clone();
+
+//     if node.state != NodeState::Leader {
+//         return;
+//     }
+
+//     let heartbeat_request_body = HeartbeatRequestBody {
+//         term: node.term,
+//         leader_id: node.id,
+//        // leader_commit: node.commit_index,
+//     };
+
+//     for (i, n) in nodes_arc.lock().unwrap().iter().enumerate() {
+//         if n.id == id {
+//             continue;
+//         }
+
+//         let url = &format!("http://localhost:{}", n.id + 8000);
+
+//         let client = reqwest::blocking::Client::new();
+
+//         let response = client
+//             .post(url)
+//             .header(Header::new(CONTENT_TYPE, ContentType::JSON.to_string()))
+//             .body(json(&heartbeat_request_body).to_string())
+//             .send();
+
+//         if let Ok(resp) = response {
+//             if let Ok(body) = resp.json::<HeartbeatResponseBody>() {
+//                 let mut nodes = nodes_arc_clone.lock().unwrap();
+//                 let mut current_node = &mut nodes[id];
+
+//                 if body.term > current_node.current_term {
+//                     current_node.term = body.term;
+//                     current_node.state = NodeState::Follower;
+//                    // current_node.voted_for = None;
+//                     current_node.leader = None;
+//                 }
+//             }
+//         }
+//     }
+// }
